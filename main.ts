@@ -4,13 +4,15 @@
 
 import {
   App,
+  Editor,
   Plugin,
   PluginSettingTab,
   Setting,
   TextAreaComponent,
   Notice,
   MarkdownView,
-} from 'obsidian';
+  TFile,
+} from 'obsidian'
 
 /** ===== Modelo N×N ===== */
 type Id = string;
@@ -39,7 +41,7 @@ interface PasteTransformSettings {
 
 /** ===== Defaults ===== */
 function uid(prefix = 'id'): Id {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 const DEFAULT_SETTINGS: PasteTransformSettings = {
@@ -59,45 +61,44 @@ const DEFAULT_SETTINGS: PasteTransformSettings = {
   settingsFormatVersion: 300,
   debugMode: false,
   active: true,
-};
+}
 
 class ReplaceRule {
-  pattern: RegExp;
-  replacer: string;
+  pattern: RegExp
+  replacer: string
   constructor(pattern: string, replacer: string) {
-    this.pattern = new RegExp(pattern, 'g');
-    this.replacer = replacer;
+    this.pattern = new RegExp(pattern, 'g')
+    this.replacer = replacer
   }
 }
 
 export default class PasteTransform extends Plugin {
-  settings: PasteTransformSettings;
-  rules: ReplaceRule[] = [];
-  private patternMap = new Map<Id, string>();
-  private replacerMap = new Map<Id, string>();
-  private statusEl?: HTMLElement;
+  settings: PasteTransformSettings
+  rules: ReplaceRule[] = []
+  private patternMap = new Map<Id, string>()
+  private replacerMap = new Map<Id, string>()
+  private statusEl?: HTMLElement
 
   async onload() {
-    await this.loadSettings();
-    this.addSettingTab(new PasteTransformSettingsTab(this.app, this));
+    await this.loadSettings()
+    this.addSettingTab(new PasteTransformSettingsTab(this.app, this))
 
     // Evento de paste
-    this.registerEvent(this.app.workspace.on("editor-paste", (event) => this.onPaste(event)));
+    this.registerEvent(this.app.workspace.on("editor-paste", (event) => this.onPaste(event)))
 
     // Comando para Hotkeys
     this.addCommand({
       id: 'paste-transform-toggle-active',
       name: 'Toggle Paste Transform (enable/disable)',
       callback: () => this.toggleActive(),
-      // hotkey default opcional — você pode remover e configurar só pelas Hotkeys
       hotkeys: [{ modifiers: ['Mod', 'Shift'], key: 'P' }],
-    });
+    })
 
     // Status bar clicável
-    this.statusEl = this.addStatusBarItem();
-    this.statusEl.addClass('mod-clickable');
-    this.statusEl.addEventListener('click', () => this.toggleActive());
-    this.updateStatusEl();
+    this.statusEl = this.addStatusBarItem()
+    this.statusEl.addClass('mod-clickable')
+    this.statusEl.addEventListener('click', () => this.toggleActive())
+    this.updateStatusEl()
   }
 
   onunload() {
@@ -105,36 +106,33 @@ export default class PasteTransform extends Plugin {
   }
 
   onPaste(event: ClipboardEvent) {
-    // Respeita o estado ativo
-    if (!this.settings.active) return;
+    if (!this.settings.active) return
 
     if (event.defaultPrevented) {
-      if (this.settings.debugMode) console.log("Event already prevented.");
-      return;
+      if (this.settings.debugMode) console.log("Event already prevented.")
+      return
     }
-    const types = event.clipboardData?.types;
-    if (!types || types.length !== 1 || types[0] !== "text/plain") return;
+    const types = event.clipboardData?.types
+    if (!types || types.length !== 1 || types[0] !== "text/plain") return
 
-    const plainText = event.clipboardData?.getData("text/plain");
-    if (!plainText) return;
+    const plainText = event.clipboardData?.getData("text/plain")
+    if (!plainText) return
 
-    const result = this.applyRules(plainText);
+    const result = this.applyRules(plainText)
     if (result !== plainText) {
-      // Tenta via MarkdownView (mais robusto)
-      const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (view?.editor) {
-        view.editor.replaceSelection(result);
-        event.preventDefault();
-        return;
-      }
-      // Fallback para API nova (se disponível)
-      // @ts-expect-error - activeEditor pode não existir em versões antigas
-      const ed = this.app.workspace.activeEditor?.editor;
+      const ed = this.getActiveEditor()
       if (ed?.replaceSelection) {
-        ed.replaceSelection(result);
-        event.preventDefault();
+        ed.replaceSelection(result)
+        event.preventDefault()
       }
     }
+  }
+
+  /** Editor ativo (API nova activeEditor → fallback MarkdownView) */
+  private getActiveEditor(app: App = this.app): Editor | undefined {
+    const ws = app.workspace as any
+    if ("activeEditor" in ws && ws.activeEditor?.editor) return ws.activeEditor.editor as Editor
+    return app.workspace.getActiveViewOfType(MarkdownView)?.editor
   }
 
   /** Migração v1(1×1) → v300(N×N) */
@@ -143,127 +141,127 @@ export default class PasteTransform extends Plugin {
       Array.isArray(s.patterns) &&
       (s.patterns as any[]).length > 0 &&
       typeof (s.patterns as any[])[0] === 'object' &&
-      Array.isArray(s.replacers);
+      Array.isArray(s.replacers)
 
     if (looksNew) {
-      (s.patterns as any[]).forEach((p: any) => { if (!p.id) p.id = uid('p'); });
-      (s.replacers as any[]).forEach((r: any) => { if (!r.id) r.id = uid('r'); });
-      if (!Array.isArray(s.links)) s.links = [];
-      s.settingsFormatVersion = 300;
-      return;
+      ; (s.patterns as any[]).forEach((p: any) => { if (!p.id) p.id = uid('p') })
+        ; (s.replacers as any[]).forEach((r: any) => { if (!r.id) r.id = uid('r') })
+      if (!Array.isArray(s.links)) s.links = []
+      s.settingsFormatVersion = 300
+      return
     }
 
-    const oldPatterns = Array.isArray(s.patterns) ? (s.patterns as string[]) : [];
-    const oldReplacers = Array.isArray(s.replacers) ? (s.replacers as string[]) : [];
+    const oldPatterns = Array.isArray(s.patterns) ? (s.patterns as string[]) : []
+    const oldReplacers = Array.isArray(s.replacers) ? (s.replacers as string[]) : []
 
-    const patterns: PatternItem[] = oldPatterns.map(t => ({ id: uid('p'), text: t }));
-    const replacers: ReplacerItem[] = oldReplacers.map(t => ({ id: uid('r'), text: t }));
+    const patterns: PatternItem[] = oldPatterns.map(t => ({ id: uid('p'), text: t }))
+    const replacers: ReplacerItem[] = oldReplacers.map(t => ({ id: uid('r'), text: t }))
 
-    const n = Math.min(patterns.length, replacers.length);
-    const links: LinkItem[] = [];
+    const n = Math.min(patterns.length, replacers.length)
+    const links: LinkItem[] = []
     for (let i = 0; i < n; i++) {
-      const enabled = Array.isArray(s.enabled) && typeof s.enabled[i] === 'boolean' ? !!s.enabled[i] : true;
-      const comment = Array.isArray(s.comments) && typeof s.comments[i] === 'string' ? s.comments[i] : "";
-      links.push({ id: uid('link'), patternId: patterns[i].id, replacerId: replacers[i].id, enabled, comment });
+      const enabled = Array.isArray(s.enabled) && typeof s.enabled[i] === 'boolean' ? !!s.enabled[i] : true
+      const comment = Array.isArray(s.comments) && typeof s.comments[i] === 'string' ? s.comments[i] : ""
+      links.push({ id: uid('link'), patternId: patterns[i].id, replacerId: replacers[i].id, enabled, comment })
     }
 
-    s.patterns = patterns;
-    s.replacers = replacers;
-    s.links = links;
-    s.settingsFormatVersion = 300;
-    delete (s as any).enabled;
-    delete (s as any).comments;
+    s.patterns = patterns
+    s.replacers = replacers
+    s.links = links
+    s.settingsFormatVersion = 300
+    delete (s as any).enabled
+    delete (s as any).comments
   }
 
   private normalizeDefaultsIfEmpty(s: PasteTransformSettings) {
     if (!Array.isArray(s.links) || s.links.length === 0) {
-      const ps = s.patterns as PatternItem[];
-      const rs = s.replacers as ReplacerItem[];
-      const n = Math.min(ps.length, rs.length);
-      s.links = [];
+      const ps = s.patterns as PatternItem[]
+      const rs = s.replacers as ReplacerItem[]
+      const n = Math.min(ps.length, rs.length)
+      s.links = []
       for (let i = 0; i < n; i++) {
-        s.links.push({ id: uid('link'), patternId: ps[i].id, replacerId: rs[i].id, enabled: true, comment: "" });
+        s.links.push({ id: uid('link'), patternId: ps[i].id, replacerId: rs[i].id, enabled: true, comment: "" })
       }
     }
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-    this.migrateIfNeeded(this.settings);
-    this.normalizeDefaultsIfEmpty(this.settings);
-    this.compileRules();
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData())
+    this.migrateIfNeeded(this.settings)
+    this.normalizeDefaultsIfEmpty(this.settings)
+    this.compileRules()
   }
 
-  async saveSettings() { await this.saveData(this.settings); }
+  async saveSettings() { await this.saveData(this.settings) }
 
   compileRules() {
-    this.rules = [];
-    this.patternMap.clear();
-    this.replacerMap.clear();
+    this.rules = []
+    this.patternMap.clear()
+    this.replacerMap.clear()
 
-    const patterns = this.settings.patterns as PatternItem[];
-    const replacers = this.settings.replacers as ReplacerItem[];
-    for (const p of patterns) this.patternMap.set(p.id, p.text);
-    for (const r of replacers) this.replacerMap.set(r.id, r.text);
+    const patterns = this.settings.patterns as PatternItem[]
+    const replacers = this.settings.replacers as ReplacerItem[]
+    for (const p of patterns) this.patternMap.set(p.id, p.text)
+    for (const r of replacers) this.replacerMap.set(r.id, r.text)
 
     for (const L of this.settings.links || []) {
-      if (!L.enabled) continue;
-      const p = this.patternMap.get(L.patternId);
-      const r = this.replacerMap.get(L.replacerId);
-      if (typeof p !== 'string' || typeof r !== 'string') continue;
-      try { this.rules.push(new ReplaceRule(p, r)); }
-      catch (e) { /* ignora inválidas */ }
+      if (!L.enabled) continue
+      const p = this.patternMap.get(L.patternId)
+      const r = this.replacerMap.get(L.replacerId)
+      if (typeof p !== 'string' || typeof r !== 'string') continue
+      try { this.rules.push(new ReplaceRule(p, r)) }
+      catch { /* ignora inválidas */ }
     }
   }
 
   applyRules(source: string | null | undefined): string {
-    if (source == null) return "";
-    let result = source;
+    if (source == null) return ""
+    let result = source
     for (const rule of this.rules) {
       if (source.search(rule.pattern) !== -1) {
-        result = source.replace(rule.pattern, rule.replacer);
-        break;
+        result = source.replace(rule.pattern, rule.replacer)
+        break
       }
     }
-    return result;
+    return result
   }
 
   /** Toggle global (hotkey, status bar, settings) */
   async toggleActive(force?: boolean) {
-    const next = force ?? !this.settings.active;
-    this.settings.active = next;
-    await this.saveSettings();
-    this.compileRules();
-    this.updateStatusEl();
-    new Notice(`Paste Transform ${next ? 'ativado' : 'desativado'}`);
+    const next = force ?? !this.settings.active
+    this.settings.active = next
+    await this.saveSettings()
+    this.compileRules()
+    this.updateStatusEl()
+    new Notice(`Paste Transform ${next ? 'ativado' : 'desativado'}`)
   }
 
   private updateStatusEl() {
-    if (!this.statusEl) return;
-    this.statusEl.setText(this.settings.active ? 'PT: ON' : 'PT: OFF');
+    if (!this.statusEl) return
+    this.statusEl.setText(this.settings.active ? 'PT: ON' : 'PT: OFF')
     this.statusEl.setAttribute(
       'aria-label',
       this.settings.active ? 'Paste Transform ativo — clique para desativar' : 'Paste Transform desativado — clique para ativar'
-    );
+    )
   }
 }
 
 /** =====================  UI / Settings  ===================== */
 
 class PasteTransformSettingsTab extends PluginSettingTab {
-  plugin: PasteTransform;
+  plugin: PasteTransform
 
-  constructor(app: App, plugin: PasteTransform) { super(app, plugin); this.plugin = plugin; }
+  constructor(app: App, plugin: PasteTransform) { super(app, plugin); this.plugin = plugin }
 
   display(): void {
-    const { containerEl } = this;
-    containerEl.empty();
+    const { containerEl } = this
+    containerEl.empty()
 
     // CSS
-    const STYLE_ID = "pte-2col-style";
+    const STYLE_ID = "pte-2col-style"
     if (!document.getElementById(STYLE_ID)) {
-      const style = document.createElement("style");
-      style.id = STYLE_ID;
+      const style = document.createElement("style")
+      style.id = STYLE_ID
       style.textContent = `
 .pte-root{ border:1px solid var(--background-modifier-border); border-radius:12px; padding:12px; }
 .pte-hdr{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap: 8px; }
@@ -296,341 +294,566 @@ class PasteTransformSettingsTab extends PluginSettingTab {
 .pte-mini input{ margin:0; }
 .pte-links-panel{ margin-top: 12px; }
 @media (max-width:800px){ .pte-stage{ grid-template-columns:1fr; } }
-      `;
-      document.head.appendChild(style);
+      `
+      document.head.appendChild(style)
     }
 
-    // Header
-    const root = containerEl.createDiv({ cls: "pte-root" });
-    const hdr = root.createDiv({ cls: "pte-hdr" });
-    hdr.createEl("h3", { text: "Paste Transform — Regras N×N", cls: "pte-ttl" });
+    const BACKUP_FOLDER = "PasteTransform Backups"
 
-    // Toggle global (ativo/desativado)
+    // Header
+    const root = containerEl.createDiv({ cls: "pte-root" })
+    const hdr = root.createDiv({ cls: "pte-hdr" })
+    hdr.createEl("h3", { text: "Paste Transform — Regras N×N", cls: "pte-ttl" })
+
+    // Toggle global
     new Setting(hdr)
       .setName('Ativo')
       .setDesc('Quando desativado, o plugin ignora o evento de colar.')
       .addToggle(t => {
-        t.setValue(this.plugin.settings.active);
-        t.onChange(async v => { await this.plugin.toggleActive(v); });
-      });
+        t.setValue(this.plugin.settings.active)
+        t.onChange(async v => { await this.plugin.toggleActive(v) })
+      })
 
     hdr.createEl("span", {
       text: "Clique em 🔗 para selecionar um lado e depois no outro item para ligar. Botão no meio da linha: ✕ (topo) remove, ✓ (baixo) habilita/desabilita.",
-    });
+    })
 
-    // Stage + layers
-    const stage = root.createDiv({ cls: "pte-stage" });
-    const layer = stage.createDiv({ cls: "pte-layer" });
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.classList.add("pte-svg");
-    layer.appendChild(svg);
-    const xwrap = stage.createDiv({ cls: "pte-xwrap" });
+    /* ===== Importar / Exportar ===== */
+    const fmt = (d: Date) => {
+      const pad = (n: number) => `${n}`.padStart(2, '0')
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`
+    }
+    const buildPayload = () => {
+      const now = new Date()
+      return {
+        meta: {
+          savedAt: now.toISOString(),
+          savedAtLocal: now.toString(),
+          pluginVersion: (this.plugin as any).manifest?.version ?? 'unknown',
+          settingsFormatVersion: this.plugin.settings.settingsFormatVersion,
+        },
+        settings: this.plugin.settings,
+      }
+    }
 
-    let pending: null | { side: 'left' | 'right'; id: Id } = null;
+    new Setting(root)
+      .setName("Dados")
+      .setDesc("Importar/Exportar todas as regras e estado (com data e hora).")
+      .addButton(b => b
+        .setButtonText("Exportar")
+        .onClick(() => {
+          const payload = buildPayload()
+          const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })
+          const stamp = fmt(new Date())
+          const a = document.createElement("a")
+          a.href = URL.createObjectURL(blob)
+          a.download = `paste-transform-export-${stamp}.json`
+          a.click()
+          setTimeout(() => URL.revokeObjectURL(a.href), 2000)
+          new Notice(`Exportado (${stamp})`)
+        }))
+      .addButton(b => {
+        const input = document.createElement("input")
+        input.type = "file"
+        input.accept = ".json,application/json"
+        input.style.display = "none"
+        input.addEventListener("change", async () => {
+          const file = input.files?.[0]
+          if (!file) return
+          try {
+            const text = await file.text()
+            const parsed = JSON.parse(text)
+            const incoming = parsed?.settings ?? parsed
+            if (!incoming || typeof incoming !== "object") throw new Error("JSON inválido.")
+            this.plugin.settings = Object.assign({}, this.plugin.settings, incoming)
+              ; (this.plugin as any).migrateIfNeeded(this.plugin.settings)
+              ; (this.plugin as any).normalizeDefaultsIfEmpty(this.plugin.settings)
+            await this.plugin.saveSettings()
+            this.plugin.compileRules()
+            this.display()
+            new Notice(`Importado com sucesso (${file.name}).`)
+          } catch (e: any) {
+            console.error(e)
+            new Notice(`Falha ao importar: ${e?.message ?? e}`)
+          }
+        })
+        return b.setButtonText("Importar").onClick(() => input.click())
+      })
+
+    /* ===== Seção: Backups ===== */
+    const backupsSection = root.createDiv({ cls: "pte-backups-sec" })
+    backupsSection.createEl("h4", { text: "Backups" })
+
+    // Linha de ações: Backup agora (lista recarrega automaticamente)
+    const actions = new Setting(backupsSection)
+      .setName("Ações de backup")
+      .setDesc("Salva backup no seu cofre e atualiza a listagem automaticamente.")
+
+    actions.addButton(b => b
+      .setButtonText("Backup agora")
+      .onClick(async () => {
+        try {
+          try { await this.app.vault.createFolder(BACKUP_FOLDER) } catch (_) { /* já existe */ }
+          const stamp = fmt(new Date())
+          const path = `${BACKUP_FOLDER}/paste-transform-backup-${stamp}.json`
+          const payload = buildPayload()
+          const content = JSON.stringify(payload, null, 2)
+          await this.app.vault.create(path, content)
+          new Notice(`Backup salvo em: ${path}`)
+          await loadBackupsList() // recarrega automaticamente após backup
+        } catch (e: any) {
+          console.error(e)
+          new Notice(`Falha ao salvar backup: ${e?.message ?? e}`)
+        }
+      }))
+
+    // Memo com listagem
+    let backupsMemo: TextAreaComponent | null = null
+    new Setting(backupsSection)
+      .setName("Arquivos de backup")
+      .setDesc("Listagem (somente leitura).")
+      .addTextArea(ta => {
+        backupsMemo = ta
+        ta.setPlaceholder("Nenhum backup encontrado.")
+        ta.setDisabled(true)
+        ta.inputEl.rows = 10
+        ta.inputEl.style.height = "220px"
+        ta.inputEl.style.whiteSpace = "pre"
+        ta.inputEl.style.fontFamily = "var(--font-monospace)"
+      })
+
+    // Dropdown + Restaurar + Remover
+    let restoreDropdown: any = null as any
+    const restoreRow = new Setting(backupsSection)
+      .setName("Restaurar de")
+      .setDesc("Selecione um backup para substituir os dados atuais, ou remova-o definitivamente.")
+
+    restoreRow.addDropdown(d => {
+      restoreDropdown = d
+      d.addOption("", "— selecione um backup —")
+      d.setValue("")
+    })
+
+    restoreRow.addButton(b => b
+      .setButtonText("Restaurar")
+      .setCta()
+      .onClick(async () => {
+        const value = restoreDropdown.getValue?.() ?? ""
+        if (!value) { new Notice("Escolha um backup na lista."); return }
+
+        const proceed = confirm("Restaurar este backup substituirá as configurações atuais. Deseja continuar?")
+        if (!proceed) return
+
+        try {
+          const file = this.app.vault.getAbstractFileByPath(value) as TFile | null
+          if (!file) throw new Error("Arquivo não encontrado.")
+          const content = await this.app.vault.read(file)
+          const parsed = JSON.parse(content)
+          const incoming = parsed?.settings ?? parsed
+          if (!incoming || typeof incoming !== "object") throw new Error("Backup inválido.")
+
+          this.plugin.settings = Object.assign({}, this.plugin.settings, incoming)
+            ; (this.plugin as any).migrateIfNeeded(this.plugin.settings)
+            ; (this.plugin as any).normalizeDefaultsIfEmpty(this.plugin.settings)
+          await this.plugin.saveSettings()
+          this.plugin.compileRules()
+          this.display() // recarrega UI
+          new Notice("Backup restaurado com sucesso.")
+        } catch (e: any) {
+          console.error(e)
+          new Notice(`Falha ao restaurar: ${e?.message ?? e}`)
+        }
+      }))
+
+    // Remover backup (exclui fisicamente do cofre)
+    restoreRow.addButton(b => b
+      .setButtonText("Remover")
+      .onClick(async () => {
+        const value = restoreDropdown.getValue?.() ?? ""
+        if (!value) { new Notice("Escolha um backup na lista."); return }
+
+        const proceed = confirm("Remover este backup irá excluir o arquivo do cofre. Deseja continuar?")
+        if (!proceed) return
+
+        try {
+          const file = this.app.vault.getAbstractFileByPath(value) as TFile | null
+          if (!file) throw new Error("Arquivo não encontrado.")
+
+          // Preferir lixeira do sistema, com fallback
+          if (typeof (this.app.vault as any).trash === 'function') {
+            await (this.app.vault as any).trash(file, true) // true = system trash
+          } else if (typeof (this.app.vault as any).delete === 'function') {
+            await (this.app.vault as any).delete(file)
+          } else if ((this.app.vault.adapter as any)?.remove) {
+            await (this.app.vault.adapter as any).remove(file.path)
+          } else {
+            throw new Error("API de exclusão indisponível.")
+          }
+
+          new Notice("Backup removido.")
+          await loadBackupsList() // atualiza dropdown + memo
+          if (restoreDropdown?.setValue) restoreDropdown.setValue("")
+        } catch (e: any) {
+          console.error(e)
+          new Notice(`Falha ao remover: ${e?.message ?? e}`)
+        }
+      }))
+
+    // ===== Stage + layers (UI principal) =====
+    const stage = root.createDiv({ cls: "pte-stage" })
+    const layer = stage.createDiv({ cls: "pte-layer" })
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    svg.classList.add("pte-svg")
+    layer.appendChild(svg)
+    const xwrap = stage.createDiv({ cls: "pte-xwrap" })
+
+    let pending: null | { side: 'left' | 'right'; id: Id } = null
 
     const buildColumn = (side: 'left' | 'right', title: string) => {
-      const wrap = stage.createDiv({ cls: "pte-col" });
-      const head = wrap.createDiv({ cls: "pte-col-head" });
-      head.createEl("h4", { text: title, cls: "pte-col-title" });
-      const count = head.createEl("span", { text: "(0)", cls: "pte-count" });
+      const wrap = stage.createDiv({ cls: "pte-col" })
+      const head = wrap.createDiv({ cls: "pte-col-head" })
+      head.createEl("h4", { text: title, cls: "pte-col-title" })
+      const count = head.createEl("span", { text: "(0)", cls: "pte-count" })
 
-      const form = wrap.createEl("form", { cls: "pte-form" });
-      const inp = form.createEl("input", { type: "text", placeholder: "Novo item…", cls: "pte-inp" });
-      form.createEl("button", { type: "submit", text: "Adicionar", cls: "pte-btn" });
-      const list = wrap.createEl("ul", { cls: "pte-list" });
+      const form = wrap.createEl("form", { cls: "pte-form" })
+      const inp = form.createEl("input", { type: "text", placeholder: "Novo item…", cls: "pte-inp" })
+      form.createEl("button", { type: "submit", text: "Adicionar", cls: "pte-btn" })
+      const list = wrap.createEl("ul", { cls: "pte-list" })
 
       form.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const v = (inp.value || "").trim();
-        if (!v) return;
-        if (side === 'left') (this.plugin.settings.patterns as PatternItem[]).push({ id: uid('p'), text: v });
-        else (this.plugin.settings.replacers as ReplacerItem[]).push({ id: uid('r'), text: v });
-        inp.value = "";
-        await this.plugin.saveSettings();
-        this.plugin.compileRules();
-        render();
-      });
+        e.preventDefault()
+        const v = (inp.value || "").trim()
+        if (!v) return
+        if (side === 'left') (this.plugin.settings.patterns as PatternItem[]).push({ id: uid('p'), text: v })
+        else (this.plugin.settings.replacers as ReplacerItem[]).push({ id: uid('r'), text: v })
+        inp.value = ""
+        await this.plugin.saveSettings()
+        this.plugin.compileRules()
+        render()
+      })
 
-      return { wrap, count, list };
-    };
+      return { wrap, count, list }
+    }
 
-    const left = buildColumn('left', 'Patterns (regex)');
-    const right = buildColumn('right', 'Replace rules');
+    const left = buildColumn('left', 'Patterns (regex)')
+    const right = buildColumn('right', 'Replace rules')
 
-    const clearNode = (n: Element | SVGElement) => { while (n.firstChild) n.removeChild(n.firstChild); };
+    const clearNode = (n: Element | SVGElement) => { while (n.firstChild) n.removeChild(n.firstChild) }
     const getArrays = () => {
-      const patterns = this.plugin.settings.patterns as PatternItem[];
-      const replacers = this.plugin.settings.replacers as ReplacerItem[];
-      const links = this.plugin.settings.links as LinkItem[];
-      return { patterns, replacers, links };
-    };
+      const patterns = this.plugin.settings.patterns as PatternItem[]
+      const replacers = this.plugin.settings.replacers as ReplacerItem[]
+      const links = this.plugin.settings.links as LinkItem[]
+      return { patterns, replacers, links }
+    }
 
     const saveDebounced = debounce(async () => {
-      await this.plugin.saveSettings();
-      this.plugin.compileRules();
-    }, 250);
+      await this.plugin.saveSettings()
+      this.plugin.compileRules()
+    }, 250)
 
     const renderColumn = (side: 'left' | 'right') => {
-      const { patterns, replacers } = getArrays();
-      const arr = side === 'left' ? patterns : replacers;
-      const view = side === 'left' ? left : right;
+      const { patterns, replacers } = getArrays()
+      const arr = side === 'left' ? patterns : replacers
+      const view = side === 'left' ? left : right
 
-      view.count.textContent = `(${arr.length})`;
-      clearNode(view.list);
+      view.count.textContent = `(${arr.length})`
+      clearNode(view.list)
 
       for (const item of arr) {
-        const li = view.list.createEl("li", { cls: "pte-item" });
-        li.setAttribute("data-id", item.id);
+        const li = view.list.createEl("li", { cls: "pte-item" })
+        li.setAttribute("data-id", item.id)
 
-        const handle = li.createEl("button", { text: "↕️", title: "Arrastar (disabled)", cls: "pte-btn ghost" });
-        const text = li.createEl("span", { text: item.text, title: item.text, cls: "pte-txt" });
-        const linkBtn = li.createEl("button", { text: "🔗", title: "Criar ligação com item da outra coluna", cls: "pte-btn" });
-        const editBtn = li.createEl("button", { text: "✏️", title: "Editar", cls: "pte-btn" });
-        const delBtn  = li.createEl("button", { text: "🗑️", title: "Excluir", cls: "pte-btn danger" });
+        const handle = li.createEl("button", { text: "↕️", title: "Arrastar (disabled)", cls: "pte-btn ghost" })
+        const text = li.createEl("span", { text: item.text, title: item.text, cls: "pte-txt" })
+        const linkBtn = li.createEl("button", { text: "🔗", title: "Criar ligação com item da outra coluna", cls: "pte-btn" })
+        const editBtn = li.createEl("button", { text: "✏️", title: "Editar", cls: "pte-btn" })
+        const delBtn = li.createEl("button", { text: "🗑️", title: "Excluir", cls: "pte-btn danger" })
 
         // editar inline
         const activateEdit = () => {
-          if (li.classList.contains("editing")) return;
-          li.classList.add("editing");
-          const input = li.createEl("input", { type: "text", value: item.text, cls: "pte-inp" });
-          text.replaceWith(input);
-          input.focus(); input.select();
+          if (li.classList.contains("editing")) return
+          li.classList.add("editing")
+          const input = li.createEl("input", { type: "text", value: item.text, cls: "pte-inp" })
+          text.replaceWith(input)
+          input.focus(); input.select()
           const commit = async () => {
-            const nv = (input.value || "").trim();
-            if (!nv) { cancel(); return; }
-            (item as any).text = nv;
-            await this.plugin.saveSettings();
-            this.plugin.compileRules();
-            render();
-          };
-          const cancel = () => { input.replaceWith(text); li.classList.remove("editing"); };
-          input.addEventListener("keydown", (e) => { if (e.key === "Enter") commit(); else if (e.key === "Escape") cancel(); });
-          input.addEventListener("blur", commit);
-        };
-        editBtn.addEventListener("click", activateEdit);
-        text.addEventListener("dblclick", activateEdit);
+            const nv = (input.value || "").trim()
+            if (!nv) { cancel(); return }
+            ; (item as any).text = nv
+            await this.plugin.saveSettings()
+            this.plugin.compileRules()
+            render()
+          }
+          const cancel = () => { input.replaceWith(text); li.classList.remove("editing") }
+          input.addEventListener("keydown", (e) => { if (e.key === "Enter") commit(); else if (e.key === "Escape") cancel() })
+          input.addEventListener("blur", commit)
+        }
+        editBtn.addEventListener("click", activateEdit)
+        text.addEventListener("dblclick", activateEdit)
 
         // excluir item (e links)
         delBtn.addEventListener("click", async () => {
           if (side === 'left') {
-            const ps = this.plugin.settings.patterns as PatternItem[];
-            const i = ps.findIndex(p => p.id === item.id);
-            if (i >= 0) ps.splice(i, 1);
-            this.plugin.settings.links = (this.plugin.settings.links || []).filter(L => L.patternId !== item.id);
+            const ps = this.plugin.settings.patterns as PatternItem[]
+            const i = ps.findIndex(p => p.id === item.id)
+            if (i >= 0) ps.splice(i, 1)
+            this.plugin.settings.links = (this.plugin.settings.links || []).filter(L => L.patternId !== item.id)
           } else {
-            const rs = this.plugin.settings.replacers as ReplacerItem[];
-            const i = rs.findIndex(r => r.id === item.id);
-            if (i >= 0) rs.splice(i, 1);
-            this.plugin.settings.links = (this.plugin.settings.links || []).filter(L => L.replacerId !== item.id);
+            const rs = this.plugin.settings.replacers as ReplacerItem[]
+            const i = rs.findIndex(r => r.id === item.id)
+            if (i >= 0) rs.splice(i, 1)
+            this.plugin.settings.links = (this.plugin.settings.links || []).filter(L => L.replacerId !== item.id)
           }
-          await this.plugin.saveSettings();
-          this.plugin.compileRules();
-          render();
-        });
+          await this.plugin.saveSettings()
+          this.plugin.compileRules()
+          render()
+        })
 
         // criar link
         linkBtn.addEventListener("click", () => {
           if (!pending) {
-            pending = { side, id: item.id };
-            li.classList.add("pte-pending");
+            pending = { side, id: item.id }
+            li.classList.add("pte-pending")
           } else if (pending.side === side) {
-            const prev = (side === 'left' ? left.list : right.list).querySelector(`li[data-id="${pending.id}"]`) as HTMLElement | null;
-            prev?.classList.remove("pte-pending");
-            pending = { side, id: item.id };
-            li.classList.add("pte-pending");
+            const prev = (side === 'left' ? left.list : right.list).querySelector(`li[data-id="${pending.id}"]`) as HTMLElement | null
+            prev?.classList.remove("pte-pending")
+            pending = { side, id: item.id }
+            li.classList.add("pte-pending")
           } else {
-            // cruzar lados
-            const a = pending.side === 'left' ? pending.id : item.id;
-            const b = pending.side === 'right' ? pending.id : item.id;
-            const leftIds = new Set((this.plugin.settings.patterns as PatternItem[]).map(p => p.id));
-            let pId = a, rId = b;
-            if (!leftIds.has(pId)) { pId = b; rId = a; }
+            const a = pending.side === 'left' ? pending.id : item.id
+            const b = pending.side === 'right' ? pending.id : item.id
+            const leftIds = new Set((this.plugin.settings.patterns as PatternItem[]).map(p => p.id))
+            let pId = a, rId = b
+            if (!leftIds.has(pId)) { pId = b; rId = a }
 
-            const links = this.plugin.settings.links as LinkItem[];
+            const links = this.plugin.settings.links as LinkItem[]
             if (!links.some(L => L.patternId === pId && L.replacerId === rId)) {
-              links.push({ id: uid('link'), patternId: pId, replacerId: rId, enabled: true, comment: "" });
-              saveDebounced();
+              links.push({ id: uid('link'), patternId: pId, replacerId: rId, enabled: true, comment: "" })
+              saveDebounced()
             }
-            (stage.querySelectorAll('.pte-pending') as NodeListOf<Element>).forEach(n => n.classList.remove('pte-pending'));
-            pending = null;
-            drawLines();
-            renderMiniLinksForAll();
+            (stage.querySelectorAll('.pte-pending') as NodeListOf<Element>).forEach(n => n.classList.remove('pte-pending'))
+            pending = null
+            drawLines()
+            renderMiniLinksForAll()
           }
-        });
+        })
 
-        handle.addEventListener("click", (e) => e.preventDefault());
+        handle.addEventListener("click", (e) => e.preventDefault())
 
-        // ---- Mini-links (enable/disable) neste item ----
-        const mini = li.createDiv({ cls: "pte-links-mini" });
+        // mini-links
+        const mini = li.createDiv({ cls: "pte-links-mini" })
         const renderMini = () => {
-          mini.empty();
+          mini.empty()
           const all = (this.plugin.settings.links || []).filter(L =>
             side === 'left' ? L.patternId === item.id : L.replacerId === item.id
-          );
-          const { patterns, replacers } = getArrays();
-          const pMap = new Map(patterns.map(p => [p.id, p.text]));
-          const rMap = new Map(replacers.map(r => [r.id, r.text]));
+          )
+          const { patterns, replacers } = getArrays()
+          const pMap = new Map(patterns.map(p => [p.id, p.text]))
+          const rMap = new Map(replacers.map(r => [r.id, r.text]))
           for (const L of all) {
-            const label = mini.createDiv({ cls: "pte-mini" });
-            const chk = document.createElement("input");
-            chk.type = "checkbox";
-            chk.checked = L.enabled !== false;
+            const label = mini.createDiv({ cls: "pte-mini" })
+            const chk = document.createElement("input")
+            chk.type = "checkbox"
+            chk.checked = L.enabled !== false
             chk.addEventListener("change", async () => {
-              L.enabled = chk.checked;
-              await this.plugin.saveSettings();
-              this.plugin.compileRules();
-              drawLines();
-            });
-            label.appendChild(chk);
-            const otherTxt = side === 'left' ? (rMap.get(L.replacerId) || "?") : (pMap.get(L.patternId) || "?");
-            label.createSpan({ text: otherTxt });
+              L.enabled = chk.checked
+              await this.plugin.saveSettings()
+              this.plugin.compileRules()
+              drawLines()
+            })
+            label.appendChild(chk)
+            const otherTxt = side === 'left' ? (rMap.get(L.replacerId) || "?") : (pMap.get(L.patternId) || "?")
+            label.createSpan({ text: otherTxt })
           }
           if (all.length === 0) {
-            mini.createSpan({ text: "Sem ligações", cls: "pte-muted" });
+            mini.createSpan({ text: "Sem ligações", cls: "pte-muted" })
           }
-        };
-        (li as any)._renderMini = renderMini; // guardamos pra atualizar depois
-        renderMini();
+        }
+          ; (li as any)._renderMini = renderMini
+        renderMini()
       }
-    };
+    }
 
     const renderMiniLinksForAll = () => {
       stage.querySelectorAll(".pte-item").forEach((li: any) => {
-        if (typeof li._renderMini === 'function') li._renderMini();
-      });
-    };
+        if (typeof li._renderMini === 'function') li._renderMini()
+      })
+    }
 
     const drawLines = () => {
-      const { patterns, replacers, links } = getArrays();
-      const leftMap = new Map(patterns.map(p => [p.id, left.list.querySelector(`li[data-id="${p.id}"]`) as HTMLElement]));
-      const rightMap = new Map(replacers.map(r => [r.id, right.list.querySelector(`li[data-id="${r.id}"]`) as HTMLElement]));
+      const { patterns, replacers, links } = getArrays()
+      const leftMap = new Map(patterns.map(p => [p.id, left.list.querySelector(`li[data-id="${p.id}"]`) as HTMLElement]))
+      const rightMap = new Map(replacers.map(r => [r.id, right.list.querySelector(`li[data-id="${r.id}"]`) as HTMLElement]))
 
-      const stageRect = stage.getBoundingClientRect();
-      clearNode(svg);
-      clearNode(xwrap);
+      const stageRect = stage.getBoundingClientRect()
+      clearNode(svg)
+      clearNode(xwrap)
 
       for (const L of links) {
-        const a = leftMap.get(L.patternId);
-        const b = rightMap.get(L.replacerId);
-        if (!a || !b) continue;
+        const a = leftMap.get(L.patternId)
+        const b = rightMap.get(L.replacerId)
+        if (!a || !b) continue
 
-        const ar = a.getBoundingClientRect();
-        const br = b.getBoundingClientRect();
+        const ar = a.getBoundingClientRect()
+        const br = b.getBoundingClientRect()
 
-        const x1 = ar.right - stageRect.left;
-        const y1 = ar.top + ar.height / 2 - stageRect.top;
-        const x2 = br.left - stageRect.left;
-        const y2 = br.top + br.height / 2 - stageRect.top;
-        const dx = Math.max(40, (x2 - x1) * 0.5);
+        const x1 = ar.right - stageRect.left
+        const y1 = ar.top + ar.height / 2 - stageRect.top
+        const x2 = br.left - stageRect.left
+        const y2 = br.top + br.height / 2 - stageRect.top
+        const dx = Math.max(40, (x2 - x1) * 0.5)
 
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`);
-        path.setAttribute("fill", "none");
-        path.setAttribute("stroke", L.enabled ? "var(--interactive-accent)" : "var(--text-muted)");
-        path.setAttribute("stroke-width", L.enabled ? "2" : "1.5");
-        path.setAttribute("opacity", L.enabled ? "0.95" : "0.45");
-        path.style.pointerEvents = "none";
-        svg.appendChild(path);
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path")
+        path.setAttribute("d", `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`)
+        path.setAttribute("fill", "none")
+        path.setAttribute("stroke", L.enabled ? "var(--interactive-accent)" : "var(--text-muted)")
+        path.setAttribute("stroke-width", L.enabled ? "2" : "1.5")
+        path.setAttribute("opacity", L.enabled ? "0.95" : "0.45")
+        path.style.pointerEvents = "none"
+        svg.appendChild(path)
 
-        // botão dividido: topo = remover ✕, baixo = toggle ✓
-        const mx = (x1 + x2) / 2;
-        const my = (y1 + y2) / 2;
+        const mx = (x1 + x2) / 2
+        const my = (y1 + y2) / 2
 
-        const topBtn = xwrap.createDiv({ cls: "pte-xh pte-xh-top" });
-        (topBtn as HTMLElement).style.left = `${mx}px`;
-        (topBtn as HTMLElement).style.top  = `${my}px`;
-        topBtn.createSpan({ text: "✕" });
+        const topBtn = xwrap.createDiv({ cls: "pte-xh pte-xh-top" })
+          ; (topBtn as HTMLElement).style.left = `${mx}px`
+          ; (topBtn as HTMLElement).style.top = `${my}px`
+        topBtn.createSpan({ text: "✕" })
         topBtn.addEventListener("click", async (e) => {
-          e.preventDefault();
-          this.plugin.settings.links = (this.plugin.settings.links || []).filter(K => K.id !== L.id);
-          await this.plugin.saveSettings();
-          this.plugin.compileRules();
-          render();
-        });
+          e.preventDefault()
+          this.plugin.settings.links = (this.plugin.settings.links || []).filter(K => K.id !== L.id)
+          await this.plugin.saveSettings()
+          this.plugin.compileRules()
+          render()
+        })
 
-        const botBtn = xwrap.createDiv({ cls: `pte-xh pte-xh-bot ${L.enabled ? 'enabled' : ''}` });
-        (botBtn as HTMLElement).style.left = `${mx}px`;
-        (botBtn as HTMLElement).style.top  = `${my}px`;
-        botBtn.createSpan({ text: "✓" });
+        const botBtn = xwrap.createDiv({ cls: `pte-xh pte-xh-bot ${L.enabled ? 'enabled' : ''}` })
+          ; (botBtn as HTMLElement).style.left = `${mx}px`
+          ; (botBtn as HTMLElement).style.top = `${my}px`
+        botBtn.createSpan({ text: "✓" })
         botBtn.addEventListener("click", async (e) => {
-          e.preventDefault();
-          L.enabled = !L.enabled;
-          await this.plugin.saveSettings();
-          this.plugin.compileRules();
-          drawLines();
-          renderMiniLinksForAll();
-        });
+          e.preventDefault()
+          L.enabled = !L.enabled
+          await this.plugin.saveSettings()
+          this.plugin.compileRules()
+          drawLines()
+          renderMiniLinksForAll()
+        })
       }
-    };
+    }
 
     const renderLinksPanel = () => {
-      const prev = root.querySelector(".pte-links-panel");
-      if (prev) prev.remove();
+      const prev = root.querySelector(".pte-links-panel")
+      if (prev) prev.remove()
 
-      const panel = root.createDiv({ cls: "pte-links-panel" });
-      panel.createEl("h4", { text: "Ligações (sumário + comentário)" });
+      const panel = root.createDiv({ cls: "pte-links-panel" })
+      panel.createEl("h4", { text: "Ligações (sumário + comentário)" })
 
-      const table = panel.createEl("div");
-      const { patterns, replacers, links } = getArrays();
-      const pMap = new Map(patterns.map(p => [p.id, p.text]));
-      const rMap = new Map(replacers.map(r => [r.id, r.text]));
+      const table = panel.createEl("div")
+      const { patterns, replacers, links } = getArrays()
+      const pMap = new Map(patterns.map(p => [p.id, p.text]))
+      const rMap = new Map(replacers.map(r => [r.id, r.text]))
 
-      (links || []).forEach((L, idx) => {
-        const row = table.createDiv({ cls: "pte-link-row" });
-        const status = L.enabled !== false ? "habilitada" : "desabilitada";
-        new Setting(row)
-          .setName(`Regra #${idx + 1} — ${status}`)
-          .setDesc(`/${pMap.get(L.patternId) || "?"}/ → "${rMap.get(L.replacerId) || "?"}"`);
+        ; (links || []).forEach((L, idx) => {
+          const row = table.createDiv({ cls: "pte-link-row" })
+          const status = L.enabled !== false ? "habilitada" : "desabilitada"
+          new Setting(row)
+            .setName(`Regra #${idx + 1} — ${status}`)
+            .setDesc(`/${pMap.get(L.patternId) || "?"}/ → "${rMap.get(L.replacerId) || "?"}"`)
 
-        new Setting(row)
-          .setName("")
-          .setDesc("Comentário (opcional)")
-          .addText(inp => {
-            inp.setPlaceholder("Explique a finalidade desta regra…");
-            inp.setValue(L.comment || "");
-            inp.onChange(async v => { L.comment = v; await this.plugin.saveSettings(); });
-          });
-      });
-    };
+          new Setting(row)
+            .setName("")
+            .setDesc("Comentário (opcional)")
+            .addText(inp => {
+              inp.setPlaceholder("Explique a finalidade desta regra…")
+              inp.setValue(L.comment || "")
+              inp.onChange(async v => { L.comment = v; await this.plugin.saveSettings() })
+            })
+        })
+    }
 
     const render = () => {
-      renderColumn('left');
-      renderColumn('right');
-      setTimeout(() => { drawLines(); }, 30);
-      renderLinksPanel();
-    };
+      renderColumn('left')
+      renderColumn('right')
+      setTimeout(() => { drawLines() }, 30)
+      renderLinksPanel()
+    }
 
-    const on = debounce(() => drawLines(), 50);
-    window.addEventListener("resize", on);
-    document.addEventListener("scroll", on, true);
+    const on = debounce(() => drawLines(), 50)
+    window.addEventListener("resize", on)
+    document.addEventListener("scroll", on, true)
+
+    // >>> Render inicial para não ficar “vazio” após recompilar
+    render()
 
     // Try/Result
     new Setting(root)
       .setName("Try rules")
       .setDesc("Cole aqui um texto para testar as regras.")
       .addTextArea(ta => {
-        ta.setPlaceholder("Sample text…");
-        ta.onChange(v => { const out = this.plugin.applyRules(v); tryDest?.setValue(out); });
-      });
+        ta.setPlaceholder("Sample text…")
+        ta.onChange(v => { const out = this.plugin.applyRules(v); tryDest?.setValue(out) })
+      })
 
-    let tryDest: TextAreaComponent | null = null;
+    let tryDest: TextAreaComponent | null = null
     new Setting(root)
       .setName("Result")
       .setDesc("Resultado da transformação")
-      .addTextArea(ta => { tryDest = ta; ta.setPlaceholder("Transform result…"); ta.setDisabled(true); });
+      .addTextArea(ta => { tryDest = ta; ta.setPlaceholder("Transform result…"); ta.setDisabled(true) })
 
+    // Debug mode (fica por último)
     new Setting(root)
       .setName("Debug mode")
       .addToggle(t => {
-        t.setValue(this.plugin.settings.debugMode);
-        t.onChange(async v => { this.plugin.settings.debugMode = v; await this.plugin.saveSettings(); });
-      });
+        t.setValue(this.plugin.settings.debugMode)
+        t.onChange(async v => { this.plugin.settings.debugMode = v; await this.plugin.saveSettings() })
+      })
 
-    render();
+    // ===== Helpers seção Backups =====
+    const listBackups = async (): Promise<Array<{ path: string; name: string; mtime: number }>> => {
+      // Usa getFiles() para evitar cache do children e pegar arquivos recém-criados
+      const files = this.app.vault.getFiles()
+        .filter(f => f.path.startsWith(`${BACKUP_FOLDER}/`) && f.extension.toLowerCase() === 'json')
+        .map(f => ({ path: f.path, name: f.name, mtime: f.stat?.mtime ?? 0 }))
+      files.sort((a, b) => b.mtime - a.mtime)
+      return files
+    }
+
+    const loadBackupsList = async () => {
+      const files = await listBackups()
+      // Memo
+      const lines = files.map(f => {
+        const dt = f.mtime ? new Date(f.mtime).toLocaleString() : "(sem data)"
+        return `${f.name}  —  ${dt}`
+      })
+      backupsMemo?.setValue(lines.join("\n") || "Nenhum backup encontrado.")
+
+      // Dropdown
+      if (restoreDropdown?.selectEl) {
+        restoreDropdown.selectEl.innerHTML = ""
+        restoreDropdown.addOption("", "— selecione um backup —")
+        for (const f of files) restoreDropdown.addOption(f.path, f.name)
+        restoreDropdown.setValue("")
+      }
+    }
+
+    // Observa alterações no Vault para atualizar lista automaticamente (create/delete/rename)
+    const refreshIfBackup = async (file: TFile | any, _old?: string) => {
+      try {
+        const p = (file && typeof file.path === 'string') ? file.path : (typeof file === 'string' ? file : '')
+        if (p && p.startsWith(`${BACKUP_FOLDER}/`)) await loadBackupsList()
+      } catch (_) { }
+    }
+    this.plugin.registerEvent(this.app.vault.on('create', refreshIfBackup))
+    this.plugin.registerEvent(this.app.vault.on('delete', refreshIfBackup))
+    this.plugin.registerEvent(this.app.vault.on('rename', (f: TFile, _oldPath: string) => refreshIfBackup(f)))
+
+    // Carrega a listagem inicial de backups
+    loadBackupsList()
 
     function debounce<T extends (...args: any[]) => any>(fn: T, wait = 250) {
-      let t: number | null = null as any;
-      return (...args: Parameters<T>) => { if (t) window.clearTimeout(t); t = window.setTimeout(() => fn(...args), wait); };
+      let t: number | null = null as any
+      return (...args: Parameters<T>) => { if (t) window.clearTimeout(t); t = window.setTimeout(() => fn(...args), wait) }
     }
   }
 }
