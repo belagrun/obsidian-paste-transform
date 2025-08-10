@@ -1,6 +1,6 @@
 {
-	"id": "paste-transform",
-	"name": "Paste transform",
+	"id": "paste-transform-extended",
+	"name": "Paste transform extended",
 	"version": "0.1.9",
 	"minAppVersion": "1.1.8",
 	"description": "Handle pasted text and and transform it by regexp rules.",
